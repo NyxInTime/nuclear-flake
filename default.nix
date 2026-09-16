@@ -4,11 +4,11 @@
   fetchurl,
 }:
 let
-  pname = "Nuclear";
+  pname = "nuclear";
   version = "1.48.4";
 
   src = fetchurl {
-    url = "https://github.com/nukeop/nuclear/releases/download/player%401.48.4/${pname}_${version}_amd64.AppImage";
+    url = "https://github.com/nukeop/nuclear/releases/download/player%401.48.4/nuclear_${version}_amd64.AppImage";
     hash = "sha256-Lw+/6foiHnFWtaaU0jVh4s57oda59lQGojXsLg7KcDI=";
   };
   appimageContents = appimageTools.extract { inherit pname version src; };
@@ -21,8 +21,8 @@ appimageTools.wrapType2 {
     ;
 
   extraInstallCommands = ''
-    install -m 444 -D ${appimageContents}/${pname}.desktop -t $out/share/applications
-    substituteInPlace $out/share/applications/${pname}.desktop \
+    install -m 444 -D ${appimageContents}/Nuclear.desktop -t $out/share/applications
+    substituteInPlace $out/share/applications/Nuclear.desktop \
       --replace-fail 'Exec=nuclear' 'Exec=${pname}' 
     cp -r ${appimageContents}/usr/share/icons $out/share
   '';
