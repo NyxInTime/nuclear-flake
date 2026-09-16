@@ -30,9 +30,21 @@
     in
     {
 
-      nixosModules.default = {
-        imports = [ ./default.nix ];
-      };
+      nixosModules.default =
+        {
+          config,
+          lib,
+          pkgs,
+          ...
+        }:
+        {
+          options.programs.nuclear.enable = lib.mkEnableOption "Nuclear Music Player";
+          config = lib.mkIf config.programs.nuclear.enable {
+            environment.systemPackages = [
+              (pkgs.callPackage ./default.nix { })
+            ];
+          };
+        };
       packages = forEachSystem (pkgs: {
         default = pkgs.callPackage ./default.nix { };
       });
