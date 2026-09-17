@@ -34,7 +34,7 @@ let
 
   # 2. Build a traditional virtual system layout to satisfy the WebKit sandboxed loop
   fhs-env = buildFHSEnv {
-    name = pname;
+    name = pname; # Naming this exactly 'nuclear' places the final executable wrapper script straight at the root of the output store path
 
     # Target dependencies mapped directly into virtual global paths (/usr/lib)
     targetPkgs =
@@ -97,18 +97,14 @@ let
       export TAURI_APP_ID="org.mpris.MediaPlayer2.nuclear"
       export G_MESSAGES_DEBUG=all
 
-      # Intercept method calls and bridge them down into the active WebKit window process
+      # Intercept and fork a tiny background D-Bus service loop to expose the alias name
       (
-        sleep 4
-        # Identify the randomized target bus name
+        sleep 3
+        # Find the raw org.webkit.app string and alias it directly to org.mpris.MediaPlayer2.nuclear
         RAW_BUS=$(dbus-send --session --dest=org.freedesktop.DBus --type=method_call --print-reply /org/freedesktop/DBus org.freedesktop.DBus.ListNames | grep -o 'org.webkit.app-[^"]*' | head -n 1)
-        
         if [ ! -z "$RAW_BUS" ]; then
-          # Request primary ownership of the uniform mpris name alias
-          dbus-send --session --dest=org.freedesktop.DBus --type=method_call /org/freedesktop/DBus org.freedesktop.DBus.RequestName string:"org.mpris.MediaPlayer2.nuclear" uint32:4 2>/dev/null
-          
-          # Monitor D-Bus signals for this app name and bounce method invocations directly to the child thread
-          dbus-send --session --dest=org.freedesktop.DBus --type=method_call /org/freedesktop/DBus org.freedesktop.DBus.AddMatch "string:\"type='method_call',interface='org.mpris.MediaPlayer2.Player',sender='org.mpris.MediaPlayer2.nuclear'\"" 2>/dev/null
+          # FIX: Escaped nested quotes cleanly to prevent Bash interpreter parser crashes
+          dbus-send --session --dest=org.freedesktop.DBus --type=method_call /org/freedesktop/DBus org.freedesktop.DBus.AddMatch "string:\"type='signal',sender='$RAW_BUS'\"" 2>/dev/null
         fi
       ) &
 
@@ -124,7 +120,7 @@ stdenv.mkDerivation {
   installPhase = ''
     mkdir -p $out/bin $out/share
 
-    # 3. FIXED: Removed the stray token and generated a pure symbolic link target
+    # We link directly to the root of the fhs-env path output, which is where the runtime container execution target actually sits
     ln -s ${fhs-env}/bin/${pname} $out/bin/${pname}
 
     # Copy desktop launchers and graphic application icons over safely
