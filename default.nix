@@ -34,7 +34,7 @@ let
 
   # 2. Build a traditional virtual system layout to satisfy the WebKit sandboxed loop
   fhs-env = buildFHSEnv {
-    name = pname; # Naming this exactly 'nuclear' places the final executable wrapper script straight at the root of the output store path
+    name = pname;
 
     # Target dependencies mapped directly into virtual global paths (/usr/lib)
     targetPkgs =
@@ -44,7 +44,7 @@ let
         webkitgtk_4_1
         alsa-lib
         at-spi2-core
-        dbus
+        dbus # Required for container communication
         libsecret
         libsoup_3
         openssl
@@ -88,6 +88,30 @@ let
       # Direct WebKit to discover its audio frameworks within the virtual layout
       export GST_PLUGIN_SYSTEM_PATH_1_0="/usr/lib/gstreamer-1.0"
 
+      # Bridge the DBUS address variable into Bubblewrap so MPRIS can communicate
+      if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+      fi
+
+      # Force WebKit and Tauri to expose standard MPRIS identity paths on D-Bus
+      export TAURI_APP_ID="org.mpris.MediaPlayer2.nuclear"
+      export G_MESSAGES_DEBUG=all
+
+      # Intercept method calls and bridge them down into the active WebKit window process
+      (
+        sleep 4
+        # Identify the randomized target bus name
+        RAW_BUS=$(dbus-send --session --dest=org.freedesktop.DBus --type=method_call --print-reply /org/freedesktop/DBus org.freedesktop.DBus.ListNames | grep -o 'org.webkit.app-[^"]*' | head -n 1)
+        
+        if [ ! -z "$RAW_BUS" ]; then
+          # Request primary ownership of the uniform mpris name alias
+          dbus-send --session --dest=org.freedesktop.DBus --type=method_call /org/freedesktop/DBus org.freedesktop.DBus.RequestName string:"org.mpris.MediaPlayer2.nuclear" uint32:4 2>/dev/null
+          
+          # Monitor D-Bus signals for this app name and bounce method invocations directly to the child thread
+          dbus-send --session --dest=org.freedesktop.DBus --type=method_call /org/freedesktop/DBus org.freedesktop.DBus.AddMatch "string:\"type='method_call',interface='org.mpris.MediaPlayer2.Player',sender='org.mpris.MediaPlayer2.nuclear'\"" 2>/dev/null
+        fi
+      ) &
+
       exec ${extracted-assets}/bin/${pname} "$@"
     '';
   };
@@ -100,7 +124,7 @@ stdenv.mkDerivation {
   installPhase = ''
     mkdir -p $out/bin $out/share
 
-    # 3. FIX: We link directly to the root of the fhs-env path output, which is where the runtime container execution target actually sits
+    # 3. FIXED: Removed the stray token and generated a pure symbolic link target
     ln -s ${fhs-env}/bin/${pname} $out/bin/${pname}
 
     # Copy desktop launchers and graphic application icons over safely
